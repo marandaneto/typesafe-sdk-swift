@@ -1,0 +1,47 @@
+name: Select Xcode
+description: Select the requested Xcode and verify the Swift 6.0 baseline when requested.
+inputs:
+  version:
+    description: Xcode version or latest-stable
+    required: false
+    default: latest-stable
+runs:
+  using: composite
+  steps:
+    - name: Select Xcode
+      shell: bash
+      env:
+        XCODE_VERSION: ${{ inputs.version }}
+      run: |
+        python3 - <<'PY'
+        import os
+        from pathlib import Path
+        import re
+        requested = os.environ['XCODE_VERSION']
+        if requested == 'latest-stable':
+            candidates = []
+            for path in Path('/Applications').glob('Xcode_*.app'):
+                match = re.fullmatch(r'Xcode_(\d+(?:\.\d+)*)\.app', path.name)
+                if match:
+                    candidates.append((tuple(map(int, match.group(1).split('.'))), path))
+            if not candidates:
+                raise SystemExit('No stable Xcode found')
+            xcode = max(candidates)[1]
+        else:
+            xcode = Path(f'/Applications/Xcode_{requested}.app')
+        developer = xcode / 'Contents/Developer'
+        if not developer.is_dir():
+            raise SystemExit(f'Missing requested Xcode: {xcode}')
+        with open(os.environ['GITHUB_ENV'], 'a') as environment:
+            environment.write(f'DEVELOPER_DIR={developer}\n')
+        print(f'Selected {xcode}')
+        PY
+    - name: Verify compiler version
+      shell: bash
+      env:
+        XCODE_VERSION: ${{ inputs.version }}
+      run: |
+        swift --version
+        if [ "$XCODE_VERSION" = '16.2' ]; then
+          swift --version | grep -E 'Swift version 6\.0([ .]|$)'
+        fi

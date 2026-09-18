@@ -1,0 +1,12 @@
+name: Install XcodeBuildMCP
+description: Install the pinned simulator and documentation tooling with Node 24.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0, Node 24 action runtime
+      with:
+        node-version: '24'
+        package-manager-cache: false
+    - name: Install XcodeBuildMCP
+      shell: bash
+      run: npm install --global xcodebuildmcp@2.3.2

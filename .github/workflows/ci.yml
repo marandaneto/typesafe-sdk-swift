@@ -14,72 +14,106 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  swift:
-    name: Swift (${{ matrix.xcode }})
+  simulator-tests:
+    name: iOS simulator tests
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
+      - uses: ./.github/actions/setup-xcode
+      - uses: ./.github/actions/setup-xcodebuildmcp
+      - name: SDK and sample tests
+        run: python3 scripts/test-ios-simulator.py
+
+  documentation:
+    name: Build DocC documentation
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
+      - uses: ./.github/actions/setup-xcode
+      - uses: ./.github/actions/setup-xcodebuildmcp
+      - run: python3 scripts/build-documentation.py
+
+  sdk-tests:
+    name: SDK tests (${{ matrix.xcode }})
+    runs-on: macos-15
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         xcode: ['16.2', latest-stable]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Select Xcode
-        env:
-          XCODE_VERSION: ${{ matrix.xcode }}
-        run: |
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-          import re
-          requested = os.environ['XCODE_VERSION']
-          if requested == 'latest-stable':
-              candidates = []
-              for path in Path('/Applications').glob('Xcode_*.app'):
-                  match = re.fullmatch(r'Xcode_(\d+(?:\.\d+)*)\.app', path.name)
-                  if match:
-                      candidates.append((tuple(map(int, match.group(1).split('.'))), path))
-              if not candidates:
-                  raise SystemExit('No stable Xcode found')
-              xcode = max(candidates)[1]
-          else:
-              xcode = Path(f'/Applications/Xcode_{requested}.app')
-          developer = xcode / 'Contents/Developer'
-          if not developer.is_dir():
-              raise SystemExit(f'Missing requested Xcode: {xcode}')
-          with open(os.environ['GITHUB_ENV'], 'a') as environment:
-              environment.write(f'DEVELOPER_DIR={developer}\n')
-          print(f'Selected {xcode}')
-          PY
-      - name: Verify compiler version
-        env:
-          XCODE_VERSION: ${{ matrix.xcode }}
-        run: |
-          swift --version
-          if [ "$XCODE_VERSION" = '16.2' ]; then
-            swift --version | grep -E 'Swift version 6\.0([ .]|$)'
-          fi
-      - name: SDK unit and HTTP integration tests
-        run: swift test -Xswiftc -warnings-as-errors
-      - name: Example feature tests
-        run: swift test --package-path Examples/SupportInbox/SupportInboxPackage -Xswiftc -warnings-as-errors
-      - name: Compile documentation examples without executing requests
-        run: python3 scripts/check-documentation-examples.py
-      - name: Build every supported Apple platform at its minimum deployment target
-        run: bash scripts/build-apple-platforms.sh
-      - name: Thread Sanitizer
-        if: matrix.xcode == 'latest-stable'
-        run: swift test --sanitize=thread
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        if: matrix.xcode == 'latest-stable'
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
+      - uses: ./.github/actions/setup-xcode
         with:
-          node-version: '22'
-      - name: Install simulator tooling
-        if: matrix.xcode == 'latest-stable'
-        run: npm install --global xcodebuildmcp@2.3.2
-      - name: Build DocC documentation
-        if: matrix.xcode == 'latest-stable'
-        run: python3 scripts/build-documentation.py
-      - name: SDK and sample tests on iOS Simulator
-        if: matrix.xcode == 'latest-stable'
-        run: python3 scripts/test-ios-simulator.py
+          version: ${{ matrix.xcode }}
+      - name: Unit and HTTP integration tests
+        run: swift test -Xswiftc -warnings-as-errors
+
+  example-tests:
+    name: Example tests (${{ matrix.xcode }})
+    runs-on: macos-15
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        xcode: ['16.2', latest-stable]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
+      - uses: ./.github/actions/setup-xcode
+        with:
+          version: ${{ matrix.xcode }}
+      - run: swift test --package-path Examples/SupportInbox/SupportInboxPackage -Xswiftc -warnings-as-errors
+
+  documentation-examples:
+    name: Compile DocC examples (${{ matrix.xcode }})
+    runs-on: macos-15
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        xcode: ['16.2', latest-stable]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
+      - uses: ./.github/actions/setup-xcode
+        with:
+          version: ${{ matrix.xcode }}
+      - run: python3 scripts/check-documentation-examples.py
+
+  platform-build:
+    name: Build ${{ matrix.platform }} (${{ matrix.xcode }})
+    runs-on: macos-15
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        xcode: ['16.2', latest-stable]
+        platform:
+          - macos
+          - macos-intel
+          - ios
+          - ios-simulator-arm64
+          - ios-simulator-intel
+          - catalyst
+          - tvos
+          - watchos
+          - visionos
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
+      - uses: ./.github/actions/setup-xcode
+        with:
+          version: ${{ matrix.xcode }}
+      - name: Build at the minimum deployment target
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: bash scripts/build-apple-platforms.sh "$PLATFORM"
+
+  thread-sanitizer:
+    name: Thread Sanitizer
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
+      - uses: ./.github/actions/setup-xcode
+      - run: swift test --sanitize=thread

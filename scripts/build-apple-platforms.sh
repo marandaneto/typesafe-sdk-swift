@@ -4,8 +4,21 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${DEVELOPER_DIR:?Set DEVELOPER_DIR to the selected Xcode Contents/Developer directory}"
 
+requested="${1:-all}"
+if [ "$#" -gt 1 ]; then
+    echo "Usage: $0 [platform|all]" >&2
+    exit 2
+fi
+case "$requested" in
+    all|macos|macos-intel|ios|ios-simulator-arm64|ios-simulator-intel|catalyst|tvos|watchos|visionos) ;;
+    *) echo "Unknown platform: $requested" >&2; exit 2 ;;
+esac
+
 build_platform() {
     local name="$1" triple="$2" platform="$3"
+    if [ "$requested" != all ] && [ "$requested" != "$name" ]; then
+        return
+    fi
     local sdk="$DEVELOPER_DIR/Platforms/$platform.platform/Developer/SDKs/$platform.sdk"
     test -d "$sdk"
     echo "Building TypeSafe for $name ($triple)"

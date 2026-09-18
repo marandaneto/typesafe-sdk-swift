@@ -229,11 +229,14 @@ The server binds only to `127.0.0.1` on an automatically assigned port. Each tes
 
 ### CI and Apple builds
 
-`.github/workflows/ci.yml` tests Xcode 16.2 (Swift 6.0) and the newest stable Xcode installed on the GitHub macOS runner. It runs strict macOS tests, all-platform library builds, Thread Sanitizer, and credential-free SDK/sample simulator tests.
+`.github/workflows/ci.yml` tests Xcode 16.2 (Swift 6.0) and the newest stable Xcode installed on the GitHub macOS runner. SDK tests, example tests, compiled documentation examples, DocC, Thread Sanitizer, simulator tests, and each platform/toolchain build run as independent jobs. There are no job dependencies or aggregate gate; each job can pass or fail independently. Actual concurrency depends on GitHub's available macOS runner capacity. Checkout/setup actions and the tooling jobs use Node 24.
 
 ```sh
 # Point to an installed Xcode; this example uses the normal default path.
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer bash scripts/build-apple-platforms.sh
+
+# Build just one platform, as each CI matrix job does.
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer bash scripts/build-apple-platforms.sh ios
 
 # Requires xcodebuildmcp 2.3.2 and an installed iPhone simulator.
 python3 scripts/test-ios-simulator.py
