@@ -1,0 +1,48 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+# Libraries leave dependency resolution to their consumers.
+Package.resolved
+
+# Xcode
+DerivedData/
+build/
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+*.hmap
+
+# Apple build and distribution artifacts
+*.ipa
+*.app
+*.dSYM
+*.dSYM.zip
+*.xcarchive
+*.xcresult
+*.profdata
+*.profraw
+
+# Signing credentials
+*.p12
+*.p8
+*.mobileprovision
+*.provisionprofile
+
+# macOS
+.DS_Store
+.AppleDouble
+._*
+
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Example launcher
+__pycache__/
+*.pyc
+
+# Editor-local settings
+.idea/
+.vscode/
