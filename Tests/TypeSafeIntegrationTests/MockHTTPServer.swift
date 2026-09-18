@@ -125,15 +125,16 @@ actor MockHTTPServer {
                 try await send(Data(head.utf8), connection: connection)
                 if bodyDelay > 0 { try await Task.sleep(nanoseconds: bodyDelay) }
                 try Task.checkCancellation()
-                try await send(body, connection: connection)
-            } catch {}
-            connection.cancel()
+                try await send(body, connection: connection, final: true)
+            } catch {
+                connection.cancel()
+            }
         }
     }
 
-    private func send(_ data: Data, connection: NWConnection) async throws {
+    private func send(_ data: Data, connection: NWConnection, final: Bool = false) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-            connection.send(content: data, completion: .contentProcessed { error in
+            connection.send(content: data, contentContext: final ? .finalMessage : .defaultMessage, isComplete: true, completion: .contentProcessed { error in
                 if let error { continuation.resume(throwing: error) }
                 else { continuation.resume() }
             })

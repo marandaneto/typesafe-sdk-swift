@@ -166,10 +166,13 @@ struct HTTPIntegrationTests {
     }
 
     @Test func retriesTimeout() async throws {
-        try await withServer([.stall, .http(200, body: Self.models)]) { server, url in
-            let client = try TypeSafeClient(apiKey: "test", baseURL: url, timeout: .seconds(2), retry: fastRetry)
-            _ = try await client.models.list()
-            #expect(await server.requests().count == 2)
+        let fixture = try Data(contentsOf: #require(Bundle.module.url(forResource: "system-one", withExtension: "json")))
+        try await withServer([.stall, .http(200, body: fixture)]) { server, url in
+            let client = try TypeSafeClient(apiKey: "test", baseURL: url, timeout: .seconds(3), retry: fastRetry)
+            _ = try await client.systemOne(state: "test", questions: ["urgent": .noul()])
+            let requests = await server.requests()
+            #expect(requests.count == 2)
+            #expect(requests.last?.headers["x-typesafe-retry-count"] == "1")
         }
     }
 
