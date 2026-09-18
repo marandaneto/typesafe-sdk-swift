@@ -49,6 +49,24 @@ struct HTTPIntegrationTests {
         }
     }
 
+    @Test func typedHandlesWorkOverURLSession() async throws {
+        enum Category: String, CaseIterable, Sendable { case billing, technical }
+        let category = ChoiceQuestion<Category>(id: "category")
+        let urgent = NoulQuestion(id: "urgent")
+        let priority = ScoreQuestion(id: "priority", criteria: ["Can wait", "Needs attention", "Urgent"])
+        let fixture = try Data(contentsOf: #require(Bundle.module.url(forResource: "system-one", withExtension: "json")))
+        try await withServer([.http(200, body: fixture)]) { server, url in
+            let client = try TypeSafeClient(apiKey: "test", baseURL: url)
+            let response = try await client.systemOne(state: "I was charged twice.", questions: [
+                category.eraseToAnyQuestion(), urgent.eraseToAnyQuestion(), priority.eraseToAnyQuestion(),
+            ])
+            #expect(try response.answer(for: category).choice == .billing)
+            #expect(try response.answer(for: urgent).noul == 0.85)
+            #expect(try response.answer(for: priority).score == 1.7)
+            #expect(await server.requests().count == 1)
+        }
+    }
+
     @Test(arguments: [408, 429, 500, 503])
     func retriesEligibleStatuses(status: Int) async throws {
         try await withServer([
@@ -117,8 +135,8 @@ struct HTTPIntegrationTests {
     }
 
     @Test func timeoutIncludesResponseBody() async throws {
-        try await withServer([.http(200, body: Self.models, bodyDelay: 2_000_000_000)]) { server, url in
-            let client = try TypeSafeClient(apiKey: "test", baseURL: url, timeout: .milliseconds(100), retry: .init(maxRetries: 0))
+        try await withServer([.http(200, body: Self.models, bodyDelay: 10_000_000_000)]) { server, url in
+            let client = try TypeSafeClient(apiKey: "test", baseURL: url, timeout: .seconds(2), retry: .init(maxRetries: 0))
             do {
                 _ = try await client.models.list()
                 Issue.record("Expected timeout before response body")
@@ -127,9 +145,29 @@ struct HTTPIntegrationTests {
         }
     }
 
+    @Test func totalDeadlineInterruptsServerDirectedBackoff() async throws {
+        try await withServer([.http(429, headers: ["Retry-After": "60"], body: Data())]) { server, url in
+            let client = try TypeSafeClient(apiKey: "test", baseURL: url)
+            do {
+                _ = try await client.models.list(options: .init(totalTimeout: .seconds(2)))
+                Issue.record("Expected total deadline")
+            } catch TypeSafeError.deadlineExceeded {}
+            #expect(await server.requests().count == 1)
+        }
+    }
+
+    @Test func totalDeadlineCancelsAnActiveResponseBody() async throws {
+        try await withServer([.http(200, body: Self.models, bodyDelay: 10_000_000_000)]) { server, url in
+            let client = try TypeSafeClient(apiKey: "test", baseURL: url, totalTimeout: .seconds(2))
+            do { _ = try await client.models.list(); Issue.record("Expected total deadline") }
+            catch TypeSafeError.deadlineExceeded {}
+            #expect(await server.requests().count == 1)
+        }
+    }
+
     @Test func retriesTimeout() async throws {
         try await withServer([.stall, .http(200, body: Self.models)]) { server, url in
-            let client = try TypeSafeClient(apiKey: "test", baseURL: url, timeout: .milliseconds(150), retry: fastRetry)
+            let client = try TypeSafeClient(apiKey: "test", baseURL: url, timeout: .seconds(2), retry: fastRetry)
             _ = try await client.models.list()
             #expect(await server.requests().count == 2)
         }

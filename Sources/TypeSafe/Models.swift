@@ -51,12 +51,34 @@ public enum Question: Sendable, Encodable {
 
 public struct NoulAnswer: Decodable, Sendable {
     public let noul: Double
+
+    private enum CodingKeys: String, CodingKey { case noul }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        noul = try container.decode(Double.self, forKey: .noul)
+        guard isProbability(noul) else {
+            throw DecodingError.dataCorruptedError(forKey: .noul, in: container, debugDescription: "Expected a finite probability from zero to one")
+        }
+    }
 }
 
 public struct ChoiceAnswer: Decodable, Sendable {
     public let choice: String
     public let confidence: Double
     public let probabilities: [String: Double]
+
+    private enum CodingKeys: String, CodingKey { case choice, confidence, probabilities }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        choice = try container.decode(String.self, forKey: .choice)
+        confidence = try container.decode(Double.self, forKey: .confidence)
+        probabilities = try container.decode([String: Double].self, forKey: .probabilities)
+        guard isProbability(confidence), probabilities.values.allSatisfy(isProbability), probabilities[choice] != nil else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid choice confidence, probabilities, or selected label"))
+        }
+    }
 }
 
 public struct ScoreAnswer: Decodable, Sendable {
@@ -73,6 +95,18 @@ public struct ScoreAnswer: Decodable, Sendable {
         confidence = try container.decode(Double.self, forKey: .confidence)
         legend = try Self.integerKeys(container.decode([String: JSONValue].self, forKey: .legend), decoder: decoder)
         probabilities = try Self.integerKeys(container.decode([String: Double].self, forKey: .probabilities), decoder: decoder)
+        guard score.isFinite, score >= 0, isProbability(confidence),
+              !legend.isEmpty, score <= Double(legend.count - 1),
+              Set(legend.keys) == Set(0..<legend.count), Set(legend.keys) == Set(probabilities.keys),
+              probabilities.values.allSatisfy(isProbability),
+              legend.values.allSatisfy({ value in
+                  switch value {
+                  case .string, .object, .array, .null: true
+                  default: false
+                  }
+              }) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid score, confidence, legend, or probabilities"))
+        }
     }
 
     private static func integerKeys<T>(_ values: [String: T], decoder: any Decoder) throws -> [Int: T] {
@@ -112,12 +146,33 @@ public struct Usage: Decodable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case inputTokens = "input_tokens", outputTokens = "output_tokens"
     }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        inputTokens = try container.decode(Int.self, forKey: .inputTokens)
+        outputTokens = try container.decode(Int.self, forKey: .outputTokens)
+        guard inputTokens >= 0, outputTokens >= 0 else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Token counts must not be negative"))
+        }
+    }
 }
 
 public struct SystemOneResponse: Decodable, Sendable {
     public let model: String
     public let answers: [String: Answer]
     public let usage: Usage
+
+    private enum CodingKeys: String, CodingKey { case model, answers, usage }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        model = try container.decode(String.self, forKey: .model)
+        answers = try container.decode([String: Answer].self, forKey: .answers)
+        usage = try container.decode(Usage.self, forKey: .usage)
+        guard !answers.isEmpty else {
+            throw DecodingError.dataCorruptedError(forKey: .answers, in: container, debugDescription: "Answers must not be empty")
+        }
+    }
 }
 
 public struct Model: Decodable, Sendable {
@@ -145,11 +200,18 @@ public struct APIResponse<Value: Sendable>: Sendable {
     public let rawBody: Data
 }
 
+public struct ResponseValidationDetails: Sendable {
+    public let metadata: ResponseMetadata
+    public let body: Data
+    public let fieldPath: [String]
+}
+
 public enum TypeSafeError: Error, Sendable {
     case invalidConfiguration(String)
     case invalidRequest(String)
     case http(statusCode: Int, body: Data, metadata: ResponseMetadata)
     case connection(code: Int)
     case timeout
-    case invalidResponse(String)
+    case deadlineExceeded
+    case invalidResponse(String, details: ResponseValidationDetails? = nil)
 }

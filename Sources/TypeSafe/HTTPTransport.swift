@@ -50,7 +50,10 @@ actor URLSessionTransport: HTTPTransport {
     }
 }
 
+enum TimeoutKind: Sendable { case attempt, total }
+
 struct RetryRuntime: Sendable {
+    var waitForTimeout: @Sendable (Duration, TimeoutKind) async throws -> Void = { duration, _ in try await duration.sleep() }
     var sleep: @Sendable (Duration) async throws -> Void = { try await $0.sleep() }
     var random: @Sendable () -> Double = { Double.random(in: 0...1) }
     var now: @Sendable () -> Date = { Date() }

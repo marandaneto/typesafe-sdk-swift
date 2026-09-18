@@ -8,6 +8,8 @@ public struct ContentView: View {
     @State private var models: [Model] = []
     @State private var timeout = 10.0
     @State private var retries = 2
+    @State private var useTotalTimeout = false
+    @State private var totalTimeout = 20.0
     @State private var tab = 0
     @State private var operation: Operation?
     @State private var status = "Ready to triage a support ticket."
@@ -24,6 +26,7 @@ public struct ContentView: View {
         let kind: Kind
         let timeout: Double
         let retries: Int
+        let totalTimeout: Double?
     }
 
     public init() {}
@@ -71,7 +74,7 @@ public struct ContentView: View {
             Section {
                 Button {
                     response = nil
-                    operation = Operation(kind: .triage(TriageScenario(message: message, model: selectedModel)), timeout: timeout, retries: retries)
+                    operation = Operation(kind: .triage(TriageScenario(message: message, model: selectedModel)), timeout: timeout, retries: retries, totalTimeout: useTotalTimeout ? totalTimeout : nil)
                 } label: {
                     Label("Analyze ticket", systemImage: "paperplane.fill")
                         .frame(maxWidth: .infinity)
@@ -171,7 +174,7 @@ public struct ContentView: View {
                     }
                 }
                 Button("Refresh available models") {
-                    operation = Operation(kind: .models, timeout: timeout, retries: retries)
+                    operation = Operation(kind: .models, timeout: timeout, retries: retries, totalTimeout: useTotalTimeout ? totalTimeout : nil)
                 }
                 .disabled(!credentials.isConfigured || operation != nil)
                 ForEach(models, id: \.name) { model in
@@ -186,7 +189,11 @@ public struct ContentView: View {
             Section("Reliability") {
                 Stepper("Attempt timeout: \(Int(timeout)) seconds", value: $timeout, in: 1...60, step: 1)
                 Stepper("Maximum retries: \(retries)", value: $retries, in: 0...5)
-                Text("Timeout applies to each attempt including the response body. Retries may repeat processing and billing. There is no total deadline.")
+                Toggle("Use total deadline", isOn: $useTotalTimeout)
+                if useTotalTimeout {
+                    Stepper("Total deadline: \(Int(totalTimeout)) seconds", value: $totalTimeout, in: 1...120, step: 1)
+                }
+                Text("Attempt timeouts include the response body. The optional total deadline also covers retries and waits. Retries may repeat processing and billing.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             .disabled(operation != nil)
@@ -211,7 +218,7 @@ public struct ContentView: View {
         metadata = nil
         responseJSON = "Waiting for response…"
         do {
-            let client = try credentials.client(timeout: work.timeout, retries: work.retries)
+            let client = try credentials.client(timeout: work.timeout, retries: work.retries, totalTimeout: work.totalTimeout)
             switch work.kind {
             case .triage(let scenario):
                 endpoint = "POST /v1/systemone"
@@ -253,7 +260,16 @@ public struct ContentView: View {
             status = "Request timed out after the configured attempts. Try a longer timeout."
         case TypeSafeError.connection(let code):
             status = "Network connection failed (\(code)). Check connectivity and try again."
-        case TypeSafeError.invalidConfiguration(let message), TypeSafeError.invalidRequest(let message), TypeSafeError.invalidResponse(let message):
+        case TypeSafeError.deadlineExceeded:
+            status = "The total request deadline expired, including retry waits."
+        case TypeSafeError.invalidResponse(let message, let details):
+            status = credentials.redacted(message)
+            if let details {
+                metadata = details.metadata
+                responseJSON = credentials.responseJSON(details.body)
+                tab = 2
+            }
+        case TypeSafeError.invalidConfiguration(let message), TypeSafeError.invalidRequest(let message):
             status = credentials.redacted(message)
         default:
             status = "Unexpected request failure. Check your configuration and try again."

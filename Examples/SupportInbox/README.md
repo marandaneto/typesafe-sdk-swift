@@ -71,7 +71,7 @@ xcodebuildmcp swift-package test \
   --package-path "$PWD/Examples/SupportInbox/SupportInboxPackage"
 ```
 
-The workspace test plan also includes a credential-free **XCUITest** smoke test (Apple UI automation requires XCTest) that verifies missing credentials disable Analyze. Run the entire plan on the simulator:
+The workspace test plan includes the root SDK's unit and loopback HTTP integration tests, sample feature tests, and a credential-free **XCUITest** smoke test (Apple UI automation requires XCTest) that verifies missing credentials disable Analyze. Run the entire plan on the simulator:
 
 ```sh
 xcodebuildmcp simulator test \

@@ -68,6 +68,6 @@ extension Duration {
 
     func sleep() async throws {
         try Task.checkCancellation()
-        try await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
+        try await Task.sleep(for: self, clock: .continuous)
     }
 }

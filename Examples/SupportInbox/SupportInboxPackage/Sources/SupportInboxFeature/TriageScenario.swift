@@ -81,9 +81,9 @@ struct DemoCredentials: Sendable {
 
     var isConfigured: Bool { key != nil }
 
-    func client(timeout: Double, retries: Int) throws -> TypeSafeClient {
+    func client(timeout: Double, retries: Int, totalTimeout: Double? = nil) throws -> TypeSafeClient {
         guard let key else { throw TypeSafeError.invalidConfiguration("Use the local simulator launch script to supply TYPESAFE_API_KEY.") }
-        return try TypeSafeClient(apiKey: key, timeout: .seconds(timeout), retry: .init(maxRetries: retries))
+        return try TypeSafeClient(apiKey: key, timeout: .seconds(timeout), totalTimeout: totalTimeout.map { .seconds($0) }, retry: .init(maxRetries: retries))
     }
 
     func redacted(_ text: String) -> String {

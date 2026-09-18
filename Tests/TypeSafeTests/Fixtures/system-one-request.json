@@ -1,0 +1,16 @@
+{
+  "model": "jev-latest",
+  "state": {"document": "I was charged twice."},
+  "questions": {
+    "category": {
+      "type": "choice",
+      "instructions": "Category?",
+      "criteria": {"billing": null, "technical": null}
+    },
+    "urgent": {"type": "noul", "instructions": "Urgent?"},
+    "priority": {
+      "type": "score",
+      "criteria": ["Can wait", "Needs attention", "Urgent"]
+    }
+  }
+}

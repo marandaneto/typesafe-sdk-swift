@@ -17,7 +17,11 @@ let package = Package(
     ],
     targets: [
         .target(name: "TypeSafe"),
-        .testTarget(name: "TypeSafeTests", dependencies: ["TypeSafe"]),
+        .testTarget(
+            name: "TypeSafeTests",
+            dependencies: ["TypeSafe"],
+            resources: [.process("Fixtures")]
+        ),
         .testTarget(
             name: "TypeSafeIntegrationTests",
             dependencies: ["TypeSafe"],

@@ -2,7 +2,7 @@
 
 A Swift-native SDK for the [TypeSafe AI API](https://typesafe.ai), using Swift Package Manager, Swift 6 concurrency, and URLSession.
 
-> **Under development.** Both endpoints, question/answer models, retries, timeouts, cancellation, and mock-server tests are implemented. Typed question handles and release/platform verification remain pending. See [PLAN.md](PLAN.md) and [COMPATIBILITY.md](COMPATIBILITY.md).
+> **Under development.** Both endpoints, typed question handles, response validation, retries, timeouts, cancellation, and mock-server tests are implemented. Release gates and additional configuration features remain open. See [PLAN.md](PLAN.md) and [COMPATIBILITY.md](COMPATIBILITY.md).
 
 ## Requirements
 
@@ -10,7 +10,7 @@ A Swift-native SDK for the [TypeSafe AI API](https://typesafe.ai), using Swift P
 - iOS/iPadOS 16, macOS 13, Mac Catalyst 16, tvOS 16, watchOS 9, or visionOS 1.
 - No third-party runtime dependencies. The minimum OS versions reflect the use of Swift `Duration`.
 
-macOS SDK tests and the iOS example's build/simulator tests have been run locally; the remaining Apple-platform matrix is not yet verified.
+macOS and iOS Simulator tests pass locally. Library compilation has been checked for all six Apple platform families at their minimum deployment targets using Swift 6.4; that is not a runtime test on each minimum OS. CI is configured to also verify Swift 6.0 and the runner's newest stable Xcode.
 
 ## Installation
 
@@ -28,7 +28,13 @@ And add this dependency to the consuming target:
 .product(name: "TypeSafe", package: "typesafe-sdk-swift")
 ```
 
-Remote installation instructions will follow the first release.
+For the unreleased development branch, use:
+
+```swift
+.package(url: "https://github.com/marandaneto/typesafe-sdk-swift.git", branch: "main")
+```
+
+There is no versioned release yet; `main` may change.
 
 ## Evaluate content
 
@@ -69,11 +75,47 @@ print(response.metadata.requestID ?? "No request ID")
 | `choice` | Selected label, confidence, and probabilities by label |
 | `score` | Expected fractional score, confidence, legend, and probabilities keyed by integer score level |
 
-Questions must be nonempty; score questions require at least two criteria. Unknown response fields are ignored. Missing or mismatched requested answers produce an error.
+Questions and choice criteria must be nonempty; score questions require at least two criteria. Unknown response fields are ignored. Missing or mismatched requested answers produce an error. Decoding validates finite probability/confidence ranges, nonnegative token counts, and score bounds/levels; request validation checks returned probability keys against the requested criteria. Approximate probability sums are accepted.
+
+## Typed questions and answers
+
+Use handles when the set of choices is known at compile time:
+
+```swift
+enum Category: String, CaseIterable, Sendable {
+    case billing, technical, other
+}
+
+let category = ChoiceQuestion<Category>(
+    id: "category",
+    instructions: "Which team should handle this request?"
+)
+let refund = NoulQuestion(id: "refund", instructions: "Is the customer requesting a refund?")
+let urgency = ScoreQuestion(id: "urgency", criteria: ["Routine", "Urgent"])
+
+let response = try await client.systemOne(
+    state: "Please refund this duplicate charge.",
+    questions: [
+        category.eraseToAnyQuestion(),
+        refund.eraseToAnyQuestion(),
+        urgency.eraseToAnyQuestion()
+    ]
+)
+
+let answer = try response.answer(for: category)
+let selected: Category = answer.choice
+let billingProbability: Double? = answer.probabilities[.billing]
+let refundProbability = try response.answer(for: refund).noul
+let expectedUrgency = try response.answer(for: urgency).score
+```
+
+The `CaseIterable` initializer includes all cases with null descriptions. For descriptions or a subset, pass `criteria: [.billing: "Payments and refunds", .technical: "Broken functionality"]`. String-backed enum choices and probability keys stay strongly typed.
+
+Duplicate IDs are rejected before networking. Missing answers, wrong types, or incompatible label/level sets throw rather than force-cast or return defaults. `response.value.answer(for:)` also works. Handles match by ID and shape, not request identity or rubric wording; retain the handles used to make your request.
 
 ## Structured content
 
-State and question descriptions support text, JSON objects, arrays, and explicit null. Omitted optional instructions are distinct from `.null`.
+State and question descriptions can encode text, JSON objects, arrays, and explicit null. Omitted optional instructions are distinct from `.null`. Null state/score descriptions follow JavaScript's SDK types but disagree with published OpenAPI; service acceptance is not guaranteed. See [compatibility decisions](COMPATIBILITY.md).
 
 ```swift
 let state = Content.object([
@@ -119,11 +161,13 @@ The base URL defaults to `https://api.typesafe.ai`; a custom `URL` may include a
 
 Default retries cover 408, 429, 500–599, connection failures, and timeouts. Backoff starts at 500 ms, doubles up to 5 seconds, and subtracts up to 25% jitter. Server retry headers are honored up to 60 seconds. Set `maxRetries: 0` to disable SDK retries.
 
-The timeout covers the entire HTTP attempt, including delivery of the response body. It restarts for each attempt; there is no total deadline yet. **Retries can repeat server processing or billing.** Exactly-once execution is not guaranteed.
+`timeout` covers the entire HTTP attempt, including the response body, and restarts for each attempt. Set `totalTimeout: .seconds(20)` on the client or request options to bound all attempts and retry waits together. The total timer starts after local encoding/validation. Nil per-call values inherit client defaults; a nil client total timeout means no total deadline.
+
+Attempt timeouts throw `.timeout`; total expiry throws `.deadlineExceeded` and is never retried. Deadlines are cooperative: cancelled child tasks are drained before returning, and synchronous decoding or user callbacks cannot be forcibly preempted. **Retries can repeat processing or billing.** Exactly-once execution is not guaranteed.
 
 ## Errors and cancellation
 
-Networking uses `async throws`. `TypeSafeError` distinguishes invalid configuration, invalid requests, HTTP errors, connection errors, timeouts, and invalid responses. HTTP errors include status, raw response bytes, and metadata.
+Networking uses `async throws`. `TypeSafeError` distinguishes invalid configuration, invalid requests, HTTP errors, connection errors, attempt timeouts, total deadlines, and invalid responses. HTTP errors include status, raw response bytes, and metadata. `invalidResponse(message, details:)` can include `ResponseValidationDetails` with the raw body, HTTP metadata, and field path. These diagnostics are sensitive and are not automatically redacted.
 
 ```swift
 do {
@@ -147,7 +191,22 @@ The client is immutable and `Sendable`, with an actor-owned URLSession. Requests
 
 Use a backend proxy for shared privileged credentials. Direct keys are appropriate only when the trust model permits them, such as trusted tools or user-supplied credentials. Custom proxy authentication is not implemented yet; custom base URLs currently still receive the configured bearer key.
 
-There is no SDK logging yet. Client string descriptions redact the key; response bodies and headers may contain sensitive data and should not be logged indiscriminately.
+Client string descriptions redact the key. See [PRIVACY.md](PRIVACY.md) for the source-level privacy/lifecycle review and its limitations.
+
+## Logging
+
+Logging is disabled by default. Supply a short, thread-safe `@Sendable` handler to receive structured events:
+
+```swift
+let client = try TypeSafeClient(
+    apiKey: apiKey,
+    logging: LoggingOptions { event in
+        print(event.kind.rawValue, event.path, event.statusCode ?? 0)
+    }
+)
+```
+
+The default minimum level is `.info`; `.debug` also emits request events. Each request has a correlation UUID shared across retries. Headers use a safe-value allowlist; other values and known credentials are redacted. Bodies remain absent even at debug level unless `includeBodies: true` is explicitly set. Opt-in bodies redact recognized credential fields but may still contain personal information; redaction is not a general PII detector. Never log raw response/error bodies indiscriminately.
 
 ## Example app
 
@@ -155,7 +214,7 @@ There is no SDK logging yet. Client string descriptions redact the key; response
 
 ## Tests
 
-All tests use [Swift Testing](https://github.com/swiftlang/swift-testing), bundled with Swift 6. No separate testing dependency is necessary.
+SDK unit/integration and sample feature tests use [Swift Testing](https://github.com/swiftlang/swift-testing), bundled with Swift 6. No separate testing dependency is necessary. The example's UI smoke test uses Apple's XCTest UI automation.
 
 ```sh
 swift build
@@ -166,13 +225,42 @@ swift test --filter TypeSafeIntegrationTests
 
 Unit tests cover JSON, request validation, wire encoding, response validation, and deterministic retry calculations. Integration tests use a local Network.framework mock HTTP server with real URLSession requests to test authentication, responses, HTTP failures, retries, interrupted bodies, timeouts, cancellation, redirects, and concurrency. They require neither API credentials nor external services.
 
-The server binds only to `127.0.0.1` on an automatically assigned port. Each test owns and shuts down its server and connections. Live service tests remain a future, opt-in release check.
+The server binds only to `127.0.0.1` on an automatically assigned port. Each test owns and shuts down its server and connections. Live API tests are deliberately excluded from this experimental release; normal tests never use credentials.
+
+### CI and Apple builds
+
+`.github/workflows/ci.yml` tests Xcode 16.2 (Swift 6.0) and the newest stable Xcode installed on the GitHub macOS runner. It runs strict macOS tests, all-platform library builds, Thread Sanitizer, and credential-free SDK/sample simulator tests.
+
+```sh
+# Point to an installed Xcode; this example uses the normal default path.
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer bash scripts/build-apple-platforms.sh
+
+# Requires xcodebuildmcp 2.3.2 and an installed iPhone simulator.
+python3 scripts/test-ios-simulator.py
+```
+
+The simulator wrapper checks both the CLI exit status and tool-level/test-summary failures, so a failed test cannot pass CI just because the CLI exited successfully. Normal CI never reads `.env` or calls the real TypeSafe API.
+
+## Documentation
+
+The DocC catalog is in `Sources/TypeSafe/TypeSafe.docc`. In Xcode, use **Product → Build Documentation**, or run:
+
+```sh
+python3 scripts/build-documentation.py
+python3 scripts/check-documentation-examples.py
+```
+
+The generated archive is under `.build/documentation`. The example checker compiles the Swift snippets without executing them or reading `.env`.
 
 ## References
 
 - [Python SDK](https://github.com/typesafe-ai/typesafe-sdk-python)
 - [JavaScript SDK](https://github.com/typesafe-ai/typesafe-sdk-js)
 - [TypeSafe documentation](https://docs.typesafe.ai/)
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for the initial experimental `0.1.0` version and known limitations. It is not yet tagged or published.
 
 ## License
 

@@ -1,96 +1,89 @@
 # Swift SDK implementation plan
 
-## Goal
+## Goal and scope
 
-Port TypeSafe's API to an idiomatic, dependency-free Swift 6 library for Apple platforms. Preserve wire compatibility, not Python/JavaScript syntax. Use SPM, structured concurrency, and compiler-checked thread safety.
+An idiomatic, dependency-free Swift 6 SPM library for Apple platforms, preserving the TypeSafe wire API rather than Python/JavaScript syntax.
 
-## Reference snapshots
+Initial endpoints: `POST /v1/systemone` and `GET /v1/models`. No streaming, synchronous networking, Objective-C/Combine wrappers, macros, or Linux support in the initial release.
 
-- Python: `typesafe-ai/typesafe-sdk-python@2ce5c65f13646cab6e6f782328194c9d85f3300a`
-- JavaScript: `typesafe-ai/typesafe-sdk-js@66880ccded6cb642dc1809620c2b108c33730214`
+References:
+- Python `2ce5c65f13646cab6e6f782328194c9d85f3300a`
+- JavaScript `66880ccded6cb642dc1809620c2b108c33730214`
+- Public OpenAPI 3.1 / API version 0.2.0, captured in `Tests/TypeSafeTests/Fixtures/openapi.json`.
 
-Initial API scope: `POST /v1/systemone` and `GET /v1/models`. No streaming, synchronous networking, Objective-C wrappers, Combine wrappers, macros, or Linux support in the initial release.
-
-## Current progress
-
-The initial client, models, retrying transport, deterministic unit tests, and loopback HTTP integration tests are implemented. See [COMPATIBILITY.md](COMPATIBILITY.md) for explicit current behavior and remaining differences. Live service verification, typed question handles, full validation, total deadlines, logging, and the platform/CI release gates remain open.
-
-The original deployment proposal was raised to iOS/iPadOS/Catalyst/tvOS 16, macOS 13, and watchOS 9 because `Duration` is unavailable on the earlier OS versions. visionOS remains at 1.
+See [COMPATIBILITY.md](COMPATIBILITY.md) for differences, validation policy, and unresolved service questions. Checked boxes describe implemented work; CI configuration is not evidence of a successful remote run.
 
 ## 0. Repository foundation
 
-- [x] Add Apple/Swift `.gitignore` and MIT license attributed to marandaneto.
-- [x] Create SPM library product `TypeSafe`, Swift tools 6.0, Swift 6 language mode.
-- [x] Declare iOS/iPadOS 16, macOS 13, Catalyst 16, tvOS 16, watchOS 9, visionOS 1 minimums.
-- [x] Document intended API and explicitly mark unimplemented examples.
-- [x] Implement a `Sendable`, `Codable` JSON value foundation with unit tests.
+- [x] Apple/Swift `.gitignore`, ignored `.env`, and MIT license attributed to marandaneto.
+- [x] SPM `TypeSafe` product, tools version 6.0, Swift 6 language mode, no runtime dependencies.
+- [x] iOS/iPadOS/Catalyst/tvOS 16, macOS 13, watchOS 9, visionOS 1 minimums (`Duration` availability).
+- [x] `Codable`, `Sendable` JSON values and content types; explicit null distinct from omitted optional fields.
+- [x] Public GitHub repository and README with local SPM setup.
 
-## 1. Freeze the contract and public API
+## 1. Contract and API design
 
-Initial decisions are recorded in `COMPATIBILITY.md`; the complete service-contract comparison remains pending.
+- [x] Inspect both pinned SDK implementations and compare their wire models to public OpenAPI.
+- [x] Store the OpenAPI snapshot, synthetic golden request/response fixtures, and compatibility matrix.
+- [x] Record score minimum-length, nullability, optional usage, future-answer, and release-date differences.
+- [x] Record retry policy differences: Swift currently follows JavaScript's lack of a total budget.
+- [x] Document protected headers, base-path preservation, request IDs, and redirect policy.
+- [x] Compile and test the basic and typed-question APIs.
+- [x] Resolve the experimental contract policy by documenting discrepancies and avoiding full-parity claims. Further live probes/tests are excluded by request; disputed service acceptance remains an explicit limitation.
+- [x] Keep extra request-body fields out of 0.1.0; the request surface intentionally exposes only supported fields.
 
-- [ ] Compare the reference implementations, their tests, and the service's OpenAPI contract.
-- [ ] Commit a compatibility matrix and sanitized request/response fixtures.
-- [ ] Resolve nullability, omitted fields, score criteria minimum length, and score legend nulls. Python's generated schema differs from the handwritten SDK contracts.
-- [ ] Decide retry-budget semantics: Python has a default retry budget; JavaScript has no total budget and caps server-directed retry delays.
-- [ ] Define protected headers, SDK identification, request-ID extraction, and base-path joining.
-- [ ] Specify custom proxy authentication separately from direct TypeSafe bearer authentication.
-- [ ] Compile basic and typed-question API examples as tests once their declarations exist.
+Gate: supported behavior is documented; unresolved schema/service differences must not be represented as verified parity.
 
-Gate: documented behavior for every difference; no accidental compatibility claims.
+## 2. Models, typed handles, and validation
 
-## 2. Models and validation
+- [x] `Content`, tagged question/answer enums, response/model/usage/metadata value types, and Swift wire coding keys.
+- [x] Noul probabilities and expected scores remain `Double`; score maps have validated integer keys.
+- [x] `NoulQuestion`, `ScoreQuestion`, and enum-backed `ChoiceQuestion` handles with explicit `AnyQuestion` erasure.
+- [x] Throwing typed answer access on both `SystemOneResponse` and `APIResponse` without casts or fallback values.
+- [x] Validate nonempty question sets, choice criteria, score criteria, and duplicate handle IDs before networking.
+- [x] Required fields/discriminators, finite probability/confidence ranges, nonnegative usage, score bounds, and contiguous score levels.
+- [x] Match requested answer IDs, types, choice probability keys, and score level keys; tolerate unknown JSON fields.
+- [x] Preserve approximate distributions without requiring exact sums or recomputing the server's score/confidence.
 
-- [ ] Add `Content` restricted to text, object, array, and null, with ergonomic literals where unambiguous.
-- [ ] Add question/answer tagged enums and strongly typed question handles with explicit type erasure.
-- [x] Add response, model, token usage, and response metadata value types.
-- [x] Preserve Swift camelCase properties via explicit wire coding keys.
-- [x] Keep noul probability and expected score as `Double`; expose score map keys as integers through explicit conversion.
-- [ ] Validate questions before networking; reject duplicate typed-handle IDs.
-- [ ] Validate required response fields and answer discriminators, while tolerating unknown fields.
-- [ ] Validate typed answer lookup against the request: missing IDs, wrong variants, unknown labels, and inconsistent criteria.
-- [ ] Define an explicit extra-body escape hatch only if parity requires it; document collisions with standard fields.
-
-Gate: fixture encoding/decoding tests plus malformed payload and typed-lookup tests; no `[String: Any]` or force casts in the public API.
+Gate: fixture tests, invalid-payload tests, typed lookup tests, and loopback HTTP tests pass. Handle lookup validates IDs/types/label or level sets, not the provenance of a request or the wording of instructions/rubrics.
 
 ## 3. Client and transport
 
-- [ ] Implement immutable `Sendable` client configuration, request options, and client value type.
-- [x] Define an internal injectable `Sendable` transport protocol and an actor-backed URLSession implementation.
-- [x] Implement both endpoints and response metadata.
-- [ ] Add structured `Sendable` errors for configuration, HTTP, connection, timeout, and decoding failures; preserve caller `CancellationError`.
-- [ ] Merge headers case-insensitively, protect required headers, and preserve custom base-path prefixes.
-- [ ] Restrict authenticated cross-origin redirects and validate base URLs.
-- [ ] Define session ownership/lifecycle; do not invalidate caller-owned resources.
-- [x] Use request-local codecs and state; do not mark the SDK `@MainActor`.
-
-Gate: deterministic mock-transport tests and actual URLSession adapter tests, including redirects and response-body failures.
+- [x] Immutable `Sendable` client; value-based per-request options.
+- [x] Internal injectable `Sendable` transport and actor-owned ephemeral URLSession.
+- [x] Both endpoints, raw response bytes, status/headers/request-ID metadata.
+- [x] Structured `Sendable` configuration/request/HTTP/connection/timeout/response errors; caller `CancellationError` preserved.
+- [x] Case-insensitive protected-header handling, custom base-path preservation, HTTPS validation, and refusal of redirects.
+- [x] SDK session ownership and cleanup; codecs and retry state remain request-local; no main-actor requirement.
+- Deferred by request: public custom transport/session configuration, client-default headers, and backend-proxy authentication.
+- [x] Response-validation errors preserve body, HTTP metadata, and field paths.
 
 ## 4. Reliability and concurrency
 
-- [x] Default to two retries, statuses 408/429/500–599, 500 ms initial backoff, 5-second cap, and 25% downward jitter.
-- [x] Support `Retry-After`, `retry-after-ms`, and bounded server-directed delays.
-- [x] Implement a 10-second complete-attempt timeout; do not equate URLSession inactivity timeouts with a wall-clock deadline.
-- [ ] Offer an optional total deadline with explicit semantics, separate from per-attempt timeout.
-- [ ] Inject sleeping/clock and randomness for deterministic tests.
-- [x] Propagate cancellation during requests and backoff; never retry caller cancellation.
-- [ ] Verify timeout/cancellation races and cancellation of losing timeout tasks.
-- [ ] Prove concurrent calls overlap without leaking headers, retries, answers, or credentials between requests.
-- [ ] Audit actor reentrancy and lifecycle behavior across suspension points.
-- [ ] Add `Sendable` logging hooks with body logging disabled and credential redaction.
+- [x] Two retries; statuses 408/429/500–599; connection/timeout retries; bounded exponential backoff with jitter.
+- [x] `Retry-After`, `retry-after-ms`, capped server delays, and deterministic injected sleep/time/randomness tests.
+- [x] Per-attempt timeout includes the complete response body; caller cancellation interrupts requests and backoff.
+- [x] Tests for interrupted bodies, timeout retries, cancellation, overlapping calls, and isolated request headers.
+- [x] Swift 6 warnings-as-errors builds and local Thread Sanitizer testing.
+- [x] Optional total deadline, including retry delays, distinct from attempt timeout.
+- [x] Deterministic timeout/cancellation race tests, child-task cleanup tests, and lifecycle/reentrancy audit in `PRIVACY.md`.
+- [x] `Sendable` logging hooks, credential redaction, and separately opt-in body logging.
 
-Gate: strict Swift 6 compilation, deterministic race/retry tests, and sanitizer runs where supported. No SDK-owned `@unchecked Sendable`, `nonisolated(unsafe)`, detached tasks, or blocking waits.
+Gate: no SDK-owned `@unchecked Sendable`, `nonisolated(unsafe)`, detached tasks, or blocking waits.
 
-## 5. Apple integration and release
+## 5. Apple integration, CI, and release
 
-- [ ] Add CI for Swift 6.0 and the latest supported Swift 6 toolchain.
-- [ ] Run macOS and iOS simulator tests; build all advertised Apple platforms.
-- [ ] Verify minimum deployment targets and integration from a main-actor-isolated app.
-- [x] Add a SwiftUI example using app-owned UI isolation and cancellation; verified all three question types and model listing against the real API in the iOS Simulator.
-- [ ] Add DocC documentation and compiled documentation examples.
-- [ ] Document backend-proxy setup, direct-key risks, retry billing implications, and intentional SDK differences.
-- [ ] Add opt-in live endpoint tests using CI secrets; never require credentials for normal tests.
-- [ ] Review Apple privacy-manifest requirements against the actual implementation.
-- [ ] Establish release URL, semantic versioning, changelog, and remote SPM installation instructions.
+- [x] SwiftUI sample with all question types, model selection, request/response inspection, cancellation, and safe local key injection.
+- [x] Manually verify all sample presets and model listing against the live service in iOS Simulator.
+- [x] macOS tests and iOS Simulator SDK/HTTP/sample tests; sample UI runs with main-actor isolation.
+- [x] Compile library for macOS, iOS, Catalyst, tvOS, watchOS, and visionOS at declared minimum deployment targets using the current local compiler.
+- [x] Add CI for Xcode 16.2 / Swift 6.0 and the newest stable Xcode installed on the runner; strict tests, Apple builds, Thread Sanitizer, and simulator tests.
+- [ ] Run the new workflow on GitHub and verify the Swift 6.0 baseline there; local builds used Swift 6.4.
+- [ ] Runtime smoke tests on minimum OS versions and broader architectures; compilation alone is not runtime certification.
+- [x] DocC catalog, archive build, and compile-only verification of the catalog's Swift examples.
+- Deferred by request: backend-proxy implementation/guide and automated live API tests. No additional live API requests are required for this experimental version.
+- [x] Apple privacy-manifest requirements review recorded in `PRIVACY.md`; no unsupported no-data-collection declaration is shipped.
+- [x] Add a changelog for the initial experimental `0.1.0` version (not yet released).
+- [ ] Release version/tag and versioned remote SPM installation instructions.
 
-Release gate: verified platform matrix, zero concurrency diagnostics, passing tests, no exposed credentials, and API documentation that matches implemented behavior.
+Release gate: verified CI/platform matrix, passing tests, no exposed credentials, documented compatibility decisions, and documentation matching implemented behavior.

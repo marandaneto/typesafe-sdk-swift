@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TypeSafe
 
-private actor StubTransport: HTTPTransport {
+actor StubTransport: HTTPTransport {
     enum Step: Sendable {
         case response(Int, [String: String] = [:], Data = Data("{\"models\":[]}".utf8))
         case connectionFailure

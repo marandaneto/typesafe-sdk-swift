@@ -18,6 +18,20 @@
   "testTargets" : [
     {
       "target" : {
+        "containerPath" : "container:../..",
+        "identifier" : "TypeSafeTests",
+        "name" : "TypeSafeTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:../..",
+        "identifier" : "TypeSafeIntegrationTests",
+        "name" : "TypeSafeIntegrationTests"
+      }
+    },
+    {
+      "target" : {
         "containerPath" : "container:SupportInboxPackage",
         "identifier" : "SupportInboxFeatureTests",
         "name" : "SupportInboxFeatureTests"
