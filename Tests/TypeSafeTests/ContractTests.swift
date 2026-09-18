@@ -21,7 +21,8 @@ struct ContractTests {
         )
         let actual = try #require(await transport.requests.first?.httpBody)
         #expect(try JSONDecoder().decode(JSONValue.self, from: actual) == JSONDecoder().decode(JSONValue.self, from: fixture("system-one-request")))
-        #expect(response.rawBody == (try fixture("system-one-response")))
+        let expectedResponse = try fixture("system-one-response")
+        #expect(response.rawBody == expectedResponse)
         #expect(response.value.answers.count == 3)
     }
 
