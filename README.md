@@ -2,7 +2,7 @@
 
 A Swift-native SDK for the [TypeSafe AI API](https://typesafe.ai), using Swift Package Manager, Swift 6 concurrency, and URLSession.
 
-> **Under development.** Both endpoints, typed question handles, response validation, retries, timeouts, cancellation, and mock-server tests are implemented. Release gates and additional configuration features remain open. See [PLAN.md](PLAN.md) and [COMPATIBILITY.md](COMPATIBILITY.md).
+> **Experimental 0.1.0.** Public APIs and behavior may change. See [CHANGELOG.md](CHANGELOG.md) and [COMPATIBILITY.md](COMPATIBILITY.md) for supported features and known limitations.
 
 ## Requirements
 
@@ -10,16 +10,16 @@ A Swift-native SDK for the [TypeSafe AI API](https://typesafe.ai), using Swift P
 - iOS/iPadOS 16, macOS 13, Mac Catalyst 16, tvOS 16, watchOS 9, or visionOS 1.
 - No third-party runtime dependencies. The minimum OS versions reflect the use of Swift `Duration`.
 
-macOS and iOS Simulator tests pass locally. Library compilation has been checked for all six Apple platform families at their minimum deployment targets using Swift 6.4; that is not a runtime test on each minimum OS. CI is configured to also verify Swift 6.0 and the runner's newest stable Xcode.
+macOS and iOS Simulator tests pass locally. Library compilation has been checked for all six Apple platform families at their minimum deployment targets using Swift 6.4; that is not a runtime test on each minimum OS. GitHub CI also passes with Swift 6.0 and the runner's newest stable Xcode.
 
 ## Installation
 
-Add this checkout as a local package in Xcode using **File → Add Package Dependencies → Add Local**, then select the `TypeSafe` library product.
+In Xcode, use **File → Add Package Dependencies**, enter `https://github.com/marandaneto/typesafe-sdk-swift.git`, select version `0.1.0`, and add the `TypeSafe` library product.
 
-For another local Swift package, add:
+For a Swift package, add:
 
 ```swift
-.package(path: "../typesafe-sdk-swift")
+.package(url: "https://github.com/marandaneto/typesafe-sdk-swift.git", exact: "0.1.0")
 ```
 
 And add this dependency to the consuming target:
@@ -28,13 +28,7 @@ And add this dependency to the consuming target:
 .product(name: "TypeSafe", package: "typesafe-sdk-swift")
 ```
 
-For the unreleased development branch, use:
-
-```swift
-.package(url: "https://github.com/marandaneto/typesafe-sdk-swift.git", branch: "main")
-```
-
-There is no versioned release yet; `main` may change.
+Pin the exact version while the SDK is experimental. For local development, use `.package(path: "../typesafe-sdk-swift")` or add the checkout using Xcode's **Add Local** option.
 
 ## Evaluate content
 
@@ -263,7 +257,7 @@ The generated archive is under `.build/documentation`. The example checker compi
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for the initial experimental `0.1.0` version and known limitations. It is not yet tagged or published.
+See the [experimental 0.1.0 release](https://github.com/marandaneto/typesafe-sdk-swift/releases/tag/0.1.0) and [CHANGELOG.md](CHANGELOG.md) for release notes and known limitations.
 
 ## License
 

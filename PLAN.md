@@ -78,12 +78,12 @@ Gate: no SDK-owned `@unchecked Sendable`, `nonisolated(unsafe)`, detached tasks,
 - [x] macOS tests and iOS Simulator SDK/HTTP/sample tests; sample UI runs with main-actor isolation.
 - [x] Compile library for macOS, iOS, Catalyst, tvOS, watchOS, and visionOS at declared minimum deployment targets using the current local compiler.
 - [x] Add CI for Xcode 16.2 / Swift 6.0 and the newest stable Xcode installed on the runner; strict tests, Apple builds, Thread Sanitizer, and simulator tests.
-- [ ] Run the new workflow on GitHub and verify the Swift 6.0 baseline there; local builds used Swift 6.4.
+- [x] Verify GitHub CI, including Swift 6.0, independent platform/architecture builds, documentation, sanitizer, and simulator jobs: [passing run](https://github.com/marandaneto/typesafe-sdk-swift/actions/runs/35350943365).
 - [ ] Runtime smoke tests on minimum OS versions and broader architectures; compilation alone is not runtime certification.
 - [x] DocC catalog, archive build, and compile-only verification of the catalog's Swift examples.
 - Deferred by request: backend-proxy implementation/guide and automated live API tests. No additional live API requests are required for this experimental version.
 - [x] Apple privacy-manifest requirements review recorded in `PRIVACY.md`; no unsupported no-data-collection declaration is shipped.
-- [x] Add a changelog for the initial experimental `0.1.0` version (not yet released).
-- [ ] Release version/tag and versioned remote SPM installation instructions.
+- [x] Add a changelog for the initial experimental `0.1.0` version.
+- [x] Prepare experimental `0.1.0` release metadata and versioned remote SPM installation instructions; publish the tag and GitHub release from this documentation update.
 
 Release gate: verified CI/platform matrix, passing tests, no exposed credentials, documented compatibility decisions, and documentation matching implemented behavior.

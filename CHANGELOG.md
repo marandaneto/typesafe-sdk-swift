@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.1.0 — Experimental (unreleased)
+## 0.1.0 — Experimental
 
-Initial experimental Swift port of the TypeSafe SDK. Public APIs and behavior may change before a stable release; this version is not yet tagged or published.
+Initial experimental Swift port of the TypeSafe SDK. Public APIs and behavior may change before a stable release.
 
 ### Added
 
@@ -20,7 +20,7 @@ Initial experimental Swift port of the TypeSafe SDK. Public APIs and behavior ma
 
 - Public custom transport configuration, backend-proxy authentication, client-default headers, and live API tests are intentionally outside this experimental release.
 - Some nullability and score-criteria rules differ across the reference SDKs and public OpenAPI contract; full compatibility is not claimed.
-- Remote CI/Swift 6.0 verification and release tagging are pending. Minimum-OS runtime certification is not claimed; library builds use those minimum deployment targets.
+- Minimum-OS runtime certification is not claimed; library builds use those minimum deployment targets. GitHub CI passes with Swift 6.0 and the runner's newest stable Xcode.
 - Do not embed privileged API keys in distributed apps. The example's direct-key setup is for local simulator development only.
 
 See [COMPATIBILITY.md](COMPATIBILITY.md) for behavior differences and [PLAN.md](PLAN.md) for remaining work.
